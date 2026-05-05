@@ -37,7 +37,7 @@ install_homebrew() {
     success "Homebrew already installed"
     return 0
   fi
-  info "Installing Homebrew..."
+  info "Installing Homebrew (this may take a few minutes)..."
   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
   # Add Homebrew to PATH for this session (Apple Silicon)
   if [[ -f /opt/homebrew/bin/brew ]]; then
@@ -53,7 +53,7 @@ install_node() {
     success "Node.js already installed ($ver)"
     return 0
   fi
-  info "Installing Node.js..."
+  info "Installing Node.js (about 30 seconds)..."
   brew install node
   success "Node.js installed ($(node --version))"
 }
@@ -63,7 +63,7 @@ install_gcloud() {
     success "Google Cloud CLI already installed"
     return 0
   fi
-  info "Installing Google Cloud CLI..."
+  info "Installing Google Cloud CLI (about a minute)..."
   brew install --cask google-cloud-sdk
   # Source completions for this session
   if [[ -f "$(brew --prefix)/share/google-cloud-sdk/path.zsh.inc" ]]; then
@@ -93,16 +93,20 @@ authenticate_gcp() {
   account=$(gcloud auth list --filter="status:ACTIVE" --format="value(account)" 2>/dev/null || true)
 
   if [[ -n "$account" ]]; then
-    success "Already authenticated as ${W}${account}${N}"
+    success "Signed in as ${W}${account}${N}"
     echo ""
-    echo -e "  ${D}Is this the right account? (y/n)${N}"
+    echo -e "  ${D}Press Enter to continue, or type 'n' to switch accounts.${N}"
     read -r -p "  > " reauth
     if [[ "$reauth" == "n" || "$reauth" == "N" ]]; then
-      info "Opening browser for Google sign-in..."
+      echo ""
+      info "Opening your browser for Google sign-in..."
+      echo -e "  ${D}Sign in with your AKQA account, then come back here.${N}"
       gcloud auth login --update-adc
     fi
   else
-    info "Opening browser for Google sign-in..."
+    echo ""
+    info "Opening your browser for Google sign-in..."
+    echo -e "  ${D}Sign in with your AKQA account, then come back here.${N}"
     gcloud auth login --update-adc
   fi
 
@@ -125,7 +129,7 @@ install_claude() {
     success "Claude Code already installed ($ver)"
     return 0
   fi
-  info "Installing Claude Code CLI..."
+  info "Installing Claude Code CLI (about 30 seconds)..."
   npm install -g @anthropic-ai/claude-code
   success "Claude Code installed ($(claude --version 2>/dev/null))"
 }
@@ -183,20 +187,28 @@ collect_figma_token() {
     local masked="${existing_token:0:8}...${existing_token: -4}"
     success "Figma token already configured (${masked})"
     echo ""
-    echo -e "  ${D}Keep this token? (y/n)${N}"
+    echo -e "  ${D}Press Enter to keep it, or type 'n' to replace it.${N}"
     read -r -p "  > " keep
-    if [[ "$keep" == "y" || "$keep" == "Y" || -z "$keep" ]]; then
+    if [[ "$keep" != "n" && "$keep" != "N" ]]; then
       FIGMA_TOKEN="$existing_token"
       return 0
     fi
   fi
 
   echo ""
-  echo -e "  ${W}Figma Personal Access Token${N}"
-  echo -e "  ${D}Create one at: figma.com > Settings > Security${N}"
-  echo -e "  ${D}> Personal access tokens > Generate new token${N}"
+  echo -e "  ${W}You need a Figma Personal Access Token.${N}"
   echo ""
-  read -r -s -p "  Paste token: " token
+  echo -e "  ${D}1. Go to ${W}figma.com${D} and sign in${N}"
+  echo -e "  ${D}2. Click your avatar (top-right) → ${W}Settings${N}"
+  echo -e "  ${D}3. Scroll to ${W}Personal access tokens${N}"
+  echo -e "  ${D}4. Click ${W}Generate new token${N}"
+  echo -e "  ${D}5. Name it anything (e.g. 'Claude Code')${N}"
+  echo -e "  ${D}6. Copy the token it shows you${N}"
+  echo ""
+  echo -e "  ${D}Paste it below and press Enter.${N}"
+  echo -e "  ${D}(Press Enter without pasting to skip — you can add it later.)${N}"
+  echo ""
+  read -r -s -p "  Token: " token
   echo ""
 
   if [[ -z "$token" ]]; then
@@ -261,7 +273,7 @@ install_akqa_mcp() {
   fi
 
   # Install and build
-  info "Installing dependencies and building..."
+  info "Installing dependencies and building (about 30 seconds)..."
   (cd "$repo_dir" && npm install --silent 2>/dev/null && npm run build:local --silent 2>/dev/null)
   success "akqa-mcp built"
 
@@ -430,11 +442,8 @@ main() {
   echo -e "  ${D}must have access to the${N} ${W}${GCP_PROJECT}${N} ${D}project.${N}"
   echo -e "  ${D}Ask your lead if you're not sure.${N}"
   echo ""
-  read -r -p "  Ready? (y/n) > " go
-  if [[ "$go" != "y" && "$go" != "Y" ]]; then
-    echo ""; info "No worries. Run again when ready."; echo ""
-    exit 0
-  fi
+  echo -e "  ${W}Press Enter to begin${N} ${D}(or Ctrl-C to cancel)${N}"
+  read -r -p "  > "
 
   phase "1/8  Prerequisites"
   install_homebrew
