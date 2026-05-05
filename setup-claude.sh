@@ -1,5 +1,5 @@
 #!/bin/bash
-set -euo pipefail
+set -uo pipefail
 
 # ──────────────────────────────────────────────
 # AKQA Design Studio — Claude Code Setup
@@ -10,6 +10,22 @@ set -euo pipefail
 R='\033[0;31m'  G='\033[0;32m'  B='\033[0;34m'
 Y='\033[0;33m'  C='\033[0;36m'  W='\033[1;37m'
 D='\033[0;90m'  N='\033[0m'
+
+CURRENT_PHASE="startup"
+
+die() {
+  echo ""
+  echo -e "  ${R}━━━ Setup stopped ━━━${N}"
+  echo ""
+  echo -e "  ${W}Phase:${N} ${CURRENT_PHASE}"
+  echo -e "  ${W}Problem:${N} $1"
+  echo ""
+  echo -e "  ${D}Take a screenshot and send it to your lead.${N}"
+  echo ""
+  exit 1
+}
+
+trap 'die "Unexpected error (line $LINENO)"' ERR
 
 GCP_PROJECT="akqa-us-ai-playground"
 DEFAULT_MODEL="claude-sonnet-4-6"
@@ -27,7 +43,40 @@ info()    { echo -e "  ${D}▸${N} $1"; }
 success() { echo -e "  ${G}✓${N} $1"; }
 warn()    { echo -e "  ${Y}!${N} $1"; }
 fail()    { echo -e "  ${R}✗${N} $1"; }
-phase()   { echo ""; echo -e "  ${C}─── $1 ───${N}"; }
+phase()   { CURRENT_PHASE="$1"; echo ""; echo -e "  ${C}─── $1 ───${N}"; }
+
+# ──────────────────────────────────────────────
+# Pre-flight checks
+# ──────────────────────────────────────────────
+preflight() {
+  CURRENT_PHASE="pre-flight checks"
+
+  if [[ "$(uname -s)" != "Darwin" ]]; then
+    die "This script only runs on macOS. Detected: $(uname -s)"
+  fi
+
+  info "Checking internet connection..."
+  if ! curl -fsS --max-time 8 https://www.google.com &>/dev/null; then
+    die "No internet connection. Connect to a network and try again."
+  fi
+  success "Internet OK"
+
+  if ! xcode-select -p &>/dev/null; then
+    echo ""
+    warn "Xcode Command Line Tools are not installed."
+    echo -e "  ${D}macOS will prompt you to install them now.${N}"
+    echo -e "  ${D}Click 'Install' in the dialog, then come back here.${N}"
+    echo -e "  ${D}(Takes 5-10 minutes.)${N}"
+    echo ""
+    xcode-select --install 2>/dev/null || true
+    echo -e "  ${D}Press Enter once the install is finished.${N}"
+    read -r -p "  > " _
+    if ! xcode-select -p &>/dev/null; then
+      die "Xcode Command Line Tools still not detected. Re-run this script after the install finishes."
+    fi
+  fi
+  success "Xcode Command Line Tools OK"
+}
 
 # ──────────────────────────────────────────────
 # Phase 1: Prerequisites
@@ -47,14 +96,34 @@ install_homebrew() {
 }
 
 install_node() {
+  local brew_prefix
+  brew_prefix="$(brew --prefix 2>/dev/null || echo "/opt/homebrew")"
+
   if command -v node &>/dev/null; then
-    local ver
-    ver=$(node --version)
-    success "Node.js already installed ($ver)"
+    local node_path ver
+    node_path="$(command -v node)"
+    ver=$(node --version 2>/dev/null || echo "unknown")
+
+    # If Node isn't from Homebrew, install Homebrew's version to avoid
+    # permission errors with npm install -g later
+    case "$node_path" in
+      "$brew_prefix"*)
+        success "Node.js already installed ($ver)"
+        ;;
+      *)
+        warn "Node.js found at $node_path (not from Homebrew)"
+        info "Installing Homebrew's Node.js to avoid permission issues..."
+        brew install node
+        hash -r 2>/dev/null || true
+        success "Node.js (Homebrew) installed ($(node --version))"
+        ;;
+    esac
     return 0
   fi
+
   info "Installing Node.js (about 30 seconds)..."
   brew install node
+  hash -r 2>/dev/null || true
   success "Node.js installed ($(node --version))"
 }
 
@@ -65,9 +134,15 @@ install_gcloud() {
   fi
   info "Installing Google Cloud CLI (about a minute)..."
   brew install --cask google-cloud-sdk
-  # Source completions for this session
-  if [[ -f "$(brew --prefix)/share/google-cloud-sdk/path.zsh.inc" ]]; then
-    source "$(brew --prefix)/share/google-cloud-sdk/path.zsh.inc"
+  # Source PATH for this session (path.bash.inc, NOT path.zsh.inc —
+  # the zsh file uses syntax that silently fails in bash)
+  local sdk_dir
+  sdk_dir="$(brew --prefix)/share/google-cloud-sdk"
+  if [[ -f "$sdk_dir/path.bash.inc" ]]; then
+    source "$sdk_dir/path.bash.inc"
+  fi
+  if ! command -v gcloud &>/dev/null; then
+    die "gcloud was installed but can't be found. Try opening a new terminal and re-running this script."
   fi
   success "Google Cloud CLI installed"
 }
@@ -86,7 +161,9 @@ install_jq() {
 # ──────────────────────────────────────────────
 authenticate_gcp() {
   info "Setting default project to ${W}${GCP_PROJECT}${N}"
-  gcloud config set project "$GCP_PROJECT" 2>/dev/null
+  if ! gcloud config set project "$GCP_PROJECT"; then
+    die "Could not set GCP project to '$GCP_PROJECT'. Check your internet connection and try again."
+  fi
 
   # Check if already authenticated
   local account
@@ -129,8 +206,17 @@ install_claude() {
     success "Claude Code already installed ($ver)"
     return 0
   fi
+  # Check npm won't hit permission errors
+  local npm_prefix
+  npm_prefix=$(npm config get prefix 2>/dev/null || echo "")
+  if [[ "$npm_prefix" == "/usr/local" || "$npm_prefix" == "/" ]]; then
+    die "npm's global folder ($npm_prefix) requires admin access. This usually means Node.js wasn't installed via Homebrew. Ask your lead for help."
+  fi
+
   info "Installing Claude Code CLI (about 30 seconds)..."
-  npm install -g @anthropic-ai/claude-code
+  if ! npm install -g @anthropic-ai/claude-code; then
+    die "npm install failed. See the error above."
+  fi
   success "Claude Code installed ($(claude --version 2>/dev/null))"
 }
 
@@ -272,10 +358,20 @@ install_akqa_mcp() {
     success "Cloned to $repo_dir"
   fi
 
-  # Install and build
+  # Install and build — show output only on failure
   info "Installing dependencies and building (about 30 seconds)..."
-  (cd "$repo_dir" && npm install --silent 2>/dev/null && npm run build:local --silent 2>/dev/null)
-  success "akqa-mcp built"
+  local build_log
+  build_log=$(mktemp)
+  if (cd "$repo_dir" && npm install 2>&1 && npm run build:local 2>&1) > "$build_log" 2>&1; then
+    rm -f "$build_log"
+    success "akqa-mcp built"
+  else
+    echo ""
+    fail "Build failed:"
+    tail -30 "$build_log" | sed 's/^/    /'
+    rm -f "$build_log"
+    die "AKQA MCP Bridge failed to build."
+  fi
 
   # Add figma-console to mcp.json (reuses Figma token)
   if [[ -z "${FIGMA_TOKEN:-}" ]]; then
@@ -355,7 +451,7 @@ configure_plugins() {
 }
 
 # ──────────────────────────────────────────────
-# Phase 8: Verify
+# Verification
 # ──────────────────────────────────────────────
 verify() {
   local all_good=true
@@ -430,6 +526,15 @@ verify() {
 # ──────────────────────────────────────────────
 main() {
   banner
+
+  # Ensure Homebrew is on PATH regardless of how the script was invoked
+  if [[ -f /opt/homebrew/bin/brew ]]; then
+    eval "$(/opt/homebrew/bin/brew shellenv)"
+  elif [[ -f /usr/local/bin/brew ]]; then
+    eval "$(/usr/local/bin/brew shellenv)"
+  fi
+
+  preflight
 
   echo -e "  ${D}This script will install and configure:${N}"
   echo -e "  ${D}  Homebrew, Node.js, Google Cloud CLI,${N}"
