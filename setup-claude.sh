@@ -137,6 +137,16 @@ install_node() {
 }
 
 install_gcloud() {
+  # gcloud may be installed but not on PATH in this bash context
+  # (e.g. standalone installer adds to .zshrc, not .bashrc)
+  if ! command -v gcloud &>/dev/null; then
+    for p in "$HOME/google-cloud-sdk/bin" /opt/homebrew/share/google-cloud-sdk/bin /usr/local/share/google-cloud-sdk/bin /opt/homebrew/bin /usr/local/bin /snap/bin; do
+      if [[ -x "$p/gcloud" ]]; then
+        export PATH="$p:$PATH"
+        break
+      fi
+    done
+  fi
   if command -v gcloud &>/dev/null; then
     success "Google Cloud CLI already installed"
     return 0
