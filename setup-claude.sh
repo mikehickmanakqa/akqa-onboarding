@@ -95,9 +95,11 @@ install_homebrew() {
   # Stdin is redirected from /dev/tty so the installer can still
   # ask for the sudo password without consuming the outer script's stdin.
   NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" < /dev/tty
-  # Add Homebrew to PATH for this session (Apple Silicon)
+  # Add Homebrew to PATH for this session
   if [[ -f /opt/homebrew/bin/brew ]]; then
     eval "$(/opt/homebrew/bin/brew shellenv)"
+  elif [[ -f /usr/local/bin/brew ]]; then
+    eval "$(/usr/local/bin/brew shellenv)"
   fi
   success "Homebrew installed"
 }
