@@ -169,14 +169,24 @@ install_python() {
   local py_ver
   py_ver=$(python3 -c 'import sys; print(f"{sys.version_info.minor}")' 2>/dev/null || echo "0")
   if (( py_ver < 10 )); then
-    echo ""
-    fail "Python 3.${py_ver} is installed, but Google Cloud CLI requires 3.10+."
-    echo -e "  ${D}The easiest fix:${N}"
-    echo -e "  ${D}  1. Install Python 3.12+ from ${W}python.org/downloads${N}"
-    echo -e "  ${D}  2. Re-run this setup script${N}"
-    echo ""
-    echo -e "  ${D}If you have Homebrew: ${W}brew install python${N}"
-    die "Python version too old for gcloud — need 3.10+, have 3.${py_ver}"
+    info "Python 3.${py_ver} is too old for gcloud (needs 3.10+) — installing standalone Python..."
+    local arch url py_dir="$HOME/.local/python3"
+    arch=$(uname -m)
+    if [[ "$arch" == "arm64" ]]; then
+      url="https://github.com/astral-sh/python-build-standalone/releases/download/20260510/cpython-3.10.20+20260510-aarch64-apple-darwin-install_only.tar.gz"
+    else
+      url="https://github.com/astral-sh/python-build-standalone/releases/download/20260510/cpython-3.10.20+20260510-x86_64-apple-darwin-install_only.tar.gz"
+    fi
+    local tmp_tar
+    tmp_tar=$(mktemp)
+    info "Downloading Python 3.10..."
+    curl -fL --progress-bar "$url" -o "$tmp_tar" || die "Could not download Python. Check your internet connection."
+    rm -rf "$py_dir"
+    mkdir -p "$py_dir"
+    tar -xzf "$tmp_tar" -C "$py_dir" --strip-components=1
+    rm -f "$tmp_tar"
+    export PATH="$py_dir/bin:$PATH"
+    py_ver=$(python3 -c 'import sys; print(f"{sys.version_info.minor}")' 2>/dev/null || echo "0")
   fi
 
   # Force gcloud to use this Python, not whatever it was bundled with
@@ -390,7 +400,8 @@ export GOOGLE_APPLICATION_CREDENTIALS="$HOME/.config/gcloud/application_default_
 # Force gcloud to use a modern Python (not its bundled version)
 command -v python3 &>/dev/null && export CLOUDSDK_PYTHON="$(command -v python3)"
 
-# Tool paths (nvm, gcloud, local binaries)
+# Tool paths (nvm, gcloud, standalone python, local binaries)
+[[ -d "$HOME/.local/python3/bin" ]] && export PATH="$HOME/.local/python3/bin:$PATH"
 [[ -s "$HOME/.nvm/nvm.sh" ]] && source "$HOME/.nvm/nvm.sh"
 [[ -d "$HOME/google-cloud-sdk/bin" ]] && export PATH="$HOME/google-cloud-sdk/bin:$PATH"
 [[ -d "$HOME/.local/bin" ]] && export PATH="$HOME/.local/bin:$PATH"
