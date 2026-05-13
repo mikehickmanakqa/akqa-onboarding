@@ -140,6 +140,34 @@ install_node() {
   success "Node.js installed ($(node --version))"
 }
 
+install_python() {
+  if command -v python3 &>/dev/null; then
+    local ver
+    ver=$(python3 --version 2>/dev/null || echo "unknown")
+    success "Python 3 already installed ($ver)"
+    return 0
+  fi
+
+  if $HAS_BREW; then
+    info "Installing Python 3 via Homebrew..."
+    brew install python
+    hash -r 2>/dev/null || true
+  else
+    # Xcode CLT (required in preflight) provides /usr/bin/python3
+    # If it's still missing, there's nothing sudo-free we can do
+    if [[ -x /usr/bin/python3 ]]; then
+      export PATH="/usr/bin:$PATH"
+    else
+      die "Python 3 is required but not found. It should come with Xcode Command Line Tools — try: xcode-select --install"
+    fi
+  fi
+
+  if ! command -v python3 &>/dev/null; then
+    die "Python 3 installation failed."
+  fi
+  success "Python 3 installed ($(python3 --version))"
+}
+
 install_gcloud() {
   # gcloud may be installed but not on PATH in this bash context
   if ! command -v gcloud &>/dev/null; then
@@ -606,6 +634,7 @@ main() {
   ensure_local_bin
   install_jq
   install_node
+  install_python
   install_gcloud
 
   phase "2/7  GCP Authentication"
