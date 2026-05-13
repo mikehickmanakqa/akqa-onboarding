@@ -166,7 +166,7 @@ install_python() {
   fi
 
   # gcloud requires Python 3.10+
-  local py_ver minor
+  local py_ver
   py_ver=$(python3 -c 'import sys; print(f"{sys.version_info.minor}")' 2>/dev/null || echo "0")
   if (( py_ver < 10 )); then
     echo ""
@@ -178,6 +178,9 @@ install_python() {
     echo -e "  ${D}If you have Homebrew: ${W}brew install python${N}"
     die "Python version too old for gcloud — need 3.10+, have 3.${py_ver}"
   fi
+
+  # Force gcloud to use this Python, not whatever it was bundled with
+  export CLOUDSDK_PYTHON="$(command -v python3)"
   success "Python 3.${py_ver} installed"
 }
 
@@ -351,7 +354,7 @@ configure_shell() {
 
   if grep -q "$marker" "$shell_rc" 2>/dev/null; then
     # Older versions may lack nvm/gcloud PATH lines or CLOUD_ML_REGION — update if so
-    if ! grep -q 'nvm.sh' "$shell_rc" 2>/dev/null || ! grep -q 'CLOUD_ML_REGION' "$shell_rc" 2>/dev/null; then
+    if ! grep -q 'nvm.sh' "$shell_rc" 2>/dev/null || ! grep -q 'CLOUD_ML_REGION' "$shell_rc" 2>/dev/null || ! grep -q 'CLOUDSDK_PYTHON' "$shell_rc" 2>/dev/null; then
       info "Updating shell config (new settings available)..."
       cp "$shell_rc" "${shell_rc}.backup.$(date +%s)" 2>/dev/null || true
       # Remove old block and re-add below
@@ -383,6 +386,9 @@ export CLOUD_ML_REGION=us-east5
 export GCLOUD_PROJECT="$ANTHROPIC_VERTEX_PROJECT_ID"
 export GOOGLE_CLOUD_PROJECT="$ANTHROPIC_VERTEX_PROJECT_ID"
 export GOOGLE_APPLICATION_CREDENTIALS="$HOME/.config/gcloud/application_default_credentials.json"
+
+# Force gcloud to use a modern Python (not its bundled version)
+command -v python3 &>/dev/null && export CLOUDSDK_PYTHON="$(command -v python3)"
 
 # Tool paths (nvm, gcloud, local binaries)
 [[ -s "$HOME/.nvm/nvm.sh" ]] && source "$HOME/.nvm/nvm.sh"
