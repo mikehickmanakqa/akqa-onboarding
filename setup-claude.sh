@@ -262,12 +262,8 @@ install_jq() {
 # Phase 2: GCP Authentication
 # ──────────────────────────────────────────────
 authenticate_gcp() {
-  info "Setting default project to ${W}${GCP_PROJECT}${N}"
-  if ! gcloud config set project "$GCP_PROJECT"; then
-    die "Could not set GCP project to '$GCP_PROJECT'. Check your internet connection and try again."
-  fi
-
-  # Check if already authenticated
+  # Authenticate FIRST — new users can't validate the project until
+  # they've signed in with an account that has access to it.
   local account
   account=$(gcloud auth list --filter="status:ACTIVE" --format="value(account)" 2>/dev/null || true)
 
@@ -287,6 +283,17 @@ authenticate_gcp() {
     info "Opening your browser for Google sign-in..."
     echo -e "  ${D}Sign in with your AKQA account, then come back here.${N}"
     gcloud auth login --update-adc
+  fi
+
+  # Now set the project — requires an authenticated account with access
+  info "Setting default project to ${W}${GCP_PROJECT}${N}"
+  if ! gcloud config set project "$GCP_PROJECT" 2>/dev/null; then
+    echo ""
+    fail "Could not set project to '${GCP_PROJECT}'."
+    echo -e "  ${D}This usually means your account doesn't have access yet.${N}"
+    echo -e "  ${D}Ask your lead to add your Google account to the${N}"
+    echo -e "  ${D}${W}akqa-us-ai-playground${N}${D} GCP project, then re-run this script.${N}"
+    die "GCP project access denied — see above."
   fi
 
   # Ensure application default credentials exist
