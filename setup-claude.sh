@@ -109,6 +109,9 @@ install_homebrew() {
   elif [[ -f /usr/local/bin/brew ]]; then
     eval "$(/usr/local/bin/brew shellenv)"
   fi
+  if ! command -v brew &>/dev/null; then
+    die "Homebrew installation failed. Cannot continue without it."
+  fi
   success "Homebrew installed"
 }
 
