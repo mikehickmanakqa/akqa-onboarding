@@ -85,8 +85,9 @@ preflight() {
 # ──────────────────────────────────────────────
 # Phase 1: Prerequisites
 # ──────────────────────────────────────────────
-install_homebrew() {
-  # brew may exist but not be on PATH in this bash context
+HAS_BREW=false
+
+detect_homebrew() {
   if ! command -v brew &>/dev/null; then
     if [[ -f /opt/homebrew/bin/brew ]]; then
       eval "$(/opt/homebrew/bin/brew shellenv)"
@@ -95,63 +96,54 @@ install_homebrew() {
     fi
   fi
   if command -v brew &>/dev/null; then
-    success "Homebrew already installed"
-    return 0
+    HAS_BREW=true
+    success "Homebrew detected"
+  else
+    info "Homebrew not found — using standalone installers (no sudo needed)"
   fi
-  info "Installing Homebrew (this may take a few minutes)..."
-  # NONINTERACTIVE=1 skips Homebrew's "Press RETURN" prompt.
-  # Stdin is redirected from /dev/tty so the installer can still
-  # ask for the sudo password without consuming the outer script's stdin.
-  NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" < /dev/tty
-  # Add Homebrew to PATH for this session
-  if [[ -f /opt/homebrew/bin/brew ]]; then
-    eval "$(/opt/homebrew/bin/brew shellenv)"
-  elif [[ -f /usr/local/bin/brew ]]; then
-    eval "$(/usr/local/bin/brew shellenv)"
-  fi
-  if ! command -v brew &>/dev/null; then
-    die "Homebrew installation failed. Cannot continue without it."
-  fi
-  success "Homebrew installed"
+}
+
+ensure_local_bin() {
+  mkdir -p "$HOME/.local/bin"
+  case ":$PATH:" in
+    *":$HOME/.local/bin:"*) ;;
+    *) export PATH="$HOME/.local/bin:$PATH" ;;
+  esac
 }
 
 install_node() {
-  local brew_prefix
-  brew_prefix="$(brew --prefix 2>/dev/null || echo "/opt/homebrew")"
-
   if command -v node &>/dev/null; then
-    local node_path ver
-    node_path="$(command -v node)"
+    local ver
     ver=$(node --version 2>/dev/null || echo "unknown")
-
-    # If Node isn't from Homebrew, install Homebrew's version to avoid
-    # permission errors with npm install -g later
-    case "$node_path" in
-      "$brew_prefix"*)
-        success "Node.js already installed ($ver)"
-        ;;
-      *)
-        warn "Node.js found at $node_path (not from Homebrew)"
-        info "Installing Homebrew's Node.js to avoid permission issues..."
-        brew install node
-        hash -r 2>/dev/null || true
-        success "Node.js (Homebrew) installed ($(node --version))"
-        ;;
-    esac
+    success "Node.js already installed ($ver)"
     return 0
   fi
 
-  info "Installing Node.js (about 30 seconds)..."
-  brew install node
-  hash -r 2>/dev/null || true
+  if $HAS_BREW; then
+    info "Installing Node.js via Homebrew..."
+    brew install node
+    hash -r 2>/dev/null || true
+  else
+    info "Installing Node.js via nvm (no sudo needed)..."
+    export NVM_DIR="$HOME/.nvm"
+    mkdir -p "$NVM_DIR"
+    curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | PROFILE=/dev/null bash
+    # Load nvm for this session
+    # shellcheck source=/dev/null
+    source "$NVM_DIR/nvm.sh"
+    nvm install --lts
+  fi
+
+  if ! command -v node &>/dev/null; then
+    die "Node.js installation failed."
+  fi
   success "Node.js installed ($(node --version))"
 }
 
 install_gcloud() {
   # gcloud may be installed but not on PATH in this bash context
-  # (e.g. standalone installer adds to .zshrc, not .bashrc)
   if ! command -v gcloud &>/dev/null; then
-    for p in "$HOME/google-cloud-sdk/bin" /opt/homebrew/share/google-cloud-sdk/bin /usr/local/share/google-cloud-sdk/bin /opt/homebrew/bin /usr/local/bin /snap/bin; do
+    for p in "$HOME/google-cloud-sdk/bin" /opt/homebrew/share/google-cloud-sdk/bin /usr/local/share/google-cloud-sdk/bin /opt/homebrew/bin /usr/local/bin; do
       if [[ -x "$p/gcloud" ]]; then
         export PATH="$p:$PATH"
         break
@@ -162,28 +154,39 @@ install_gcloud() {
     success "Google Cloud CLI already installed"
     return 0
   fi
-  info "Installing Google Cloud CLI (about a minute)..."
-  brew install --cask google-cloud-sdk
-  # Source PATH for this session (path.bash.inc, NOT path.zsh.inc —
-  # the zsh file uses syntax that silently fails in bash)
-  local sdk_dir
-  sdk_dir="$(brew --prefix 2>/dev/null || echo "/opt/homebrew")/share/google-cloud-sdk"
-  if [[ -f "$sdk_dir/path.bash.inc" ]]; then
-    source "$sdk_dir/path.bash.inc"
+
+  if $HAS_BREW; then
+    info "Installing Google Cloud CLI via Homebrew..."
+    brew install --cask google-cloud-sdk
+    local sdk_dir
+    sdk_dir="$(brew --prefix 2>/dev/null || echo "/opt/homebrew")/share/google-cloud-sdk"
+    if [[ -f "$sdk_dir/path.bash.inc" ]]; then
+      source "$sdk_dir/path.bash.inc"
+    fi
+    if ! command -v gcloud &>/dev/null && [[ -d "$sdk_dir/bin" ]]; then
+      export PATH="$sdk_dir/bin:$PATH"
+    fi
+  else
+    info "Installing Google Cloud CLI (no sudo needed)..."
+    local arch
+    arch=$(uname -m)
+    local url
+    if [[ "$arch" == "arm64" ]]; then
+      url="https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-darwin-arm.tar.gz"
+    else
+      url="https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-darwin-x86_64.tar.gz"
+    fi
+    local tmp_tar
+    tmp_tar=$(mktemp)
+    curl -fsSL "$url" -o "$tmp_tar"
+    # Remove existing partial install if present
+    rm -rf "$HOME/google-cloud-sdk"
+    tar -xzf "$tmp_tar" -C "$HOME"
+    rm -f "$tmp_tar"
+    "$HOME/google-cloud-sdk/install.sh" --quiet --path-update=false
+    export PATH="$HOME/google-cloud-sdk/bin:$PATH"
   fi
-  # Fallback: add the bin directory directly if sourcing didn't work
-  if ! command -v gcloud &>/dev/null && [[ -d "$sdk_dir/bin" ]]; then
-    export PATH="$sdk_dir/bin:$PATH"
-  fi
-  # Last resort: check common Homebrew locations
-  if ! command -v gcloud &>/dev/null; then
-    for p in /opt/homebrew/share/google-cloud-sdk/bin /usr/local/share/google-cloud-sdk/bin /opt/homebrew/bin /usr/local/bin; do
-      if [[ -x "$p/gcloud" ]]; then
-        export PATH="$p:$PATH"
-        break
-      fi
-    done
-  fi
+
   if ! command -v gcloud &>/dev/null; then
     die "gcloud was installed but can't be found. Try opening a new terminal and re-running this script."
   fi
@@ -194,8 +197,27 @@ install_jq() {
   if command -v jq &>/dev/null; then
     return 0
   fi
-  info "Installing jq (for config management)..."
-  brew install jq
+
+  if $HAS_BREW; then
+    info "Installing jq via Homebrew..."
+    brew install jq
+  else
+    info "Installing jq (no sudo needed)..."
+    local arch
+    arch=$(uname -m)
+    local url
+    if [[ "$arch" == "arm64" ]]; then
+      url="https://github.com/jqlang/jq/releases/latest/download/jq-macos-arm64"
+    else
+      url="https://github.com/jqlang/jq/releases/latest/download/jq-macos-amd64"
+    fi
+    curl -fsSL "$url" -o "$HOME/.local/bin/jq"
+    chmod +x "$HOME/.local/bin/jq"
+  fi
+
+  if ! command -v jq &>/dev/null; then
+    die "jq installation failed."
+  fi
   success "jq installed"
 }
 
@@ -253,7 +275,7 @@ install_claude() {
   local npm_prefix
   npm_prefix=$(npm config get prefix 2>/dev/null || echo "")
   if [[ "$npm_prefix" == "/usr/local" || "$npm_prefix" == "/" ]]; then
-    die "npm's global folder ($npm_prefix) requires admin access. This usually means Node.js wasn't installed via Homebrew. Ask your lead for help."
+    die "npm's global folder ($npm_prefix) requires admin access. Try re-running this script to install Node via nvm."
   fi
 
   info "Installing Claude Code CLI (about 30 seconds)..."
@@ -288,6 +310,11 @@ export ANTHROPIC_VERTEX_PROJECT_ID=akqa-us-ai-playground
 export GCLOUD_PROJECT="$ANTHROPIC_VERTEX_PROJECT_ID"
 export GOOGLE_CLOUD_PROJECT="$ANTHROPIC_VERTEX_PROJECT_ID"
 export GOOGLE_APPLICATION_CREDENTIALS="$HOME/.config/gcloud/application_default_credentials.json"
+
+# Tool paths (nvm, gcloud, local binaries)
+[[ -s "$HOME/.nvm/nvm.sh" ]] && source "$HOME/.nvm/nvm.sh"
+[[ -d "$HOME/google-cloud-sdk/bin" ]] && export PATH="$HOME/google-cloud-sdk/bin:$PATH"
+[[ -d "$HOME/.local/bin" ]] && export PATH="$HOME/.local/bin:$PATH"
 SHELL_BLOCK
 
   # Source for this session
@@ -561,9 +588,9 @@ main() {
   preflight
 
   echo -e "  ${D}This script will install and configure:${N}"
-  echo -e "  ${D}  Homebrew, Node.js, Google Cloud CLI,${N}"
-  echo -e "  ${D}  Claude Code, Vertex AI, AKQA MCP${N}"
-  echo -e "  ${D}  Bridge, and design plugins.${N}"
+  echo -e "  ${D}  Node.js, Google Cloud CLI, Claude Code,${N}"
+  echo -e "  ${D}  Vertex AI, AKQA MCP Bridge, and${N}"
+  echo -e "  ${D}  design plugins. No sudo required.${N}"
   echo ""
   echo -e "  ${D}Already-installed tools will be skipped.${N}"
   echo ""
@@ -575,7 +602,8 @@ main() {
   ask -r -p "  > "
 
   phase "1/7  Prerequisites"
-  install_homebrew
+  detect_homebrew
+  ensure_local_bin
   install_jq
   install_node
   install_gcloud

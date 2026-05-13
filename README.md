@@ -20,13 +20,17 @@ bash <(curl -fsSL https://raw.githubusercontent.com/mikehickmanakqa/akqa-onboard
 
 | Phase | What |
 |-------|------|
-| 1 | Homebrew, jq, Node.js, Google Cloud CLI |
+| 1 | jq, Node.js, Google Cloud CLI (no sudo) |
 | 2 | GCP authentication (browser sign-in) |
 | 3 | Claude Code CLI |
 | 4 | Vertex AI environment variables |
 | 5 | Figma personal access token |
 | 6 | AKQA MCP Bridge (clone, build, configure) |
 | 7 | Superpowers + Designer Skills plugins |
+
+No admin/sudo access required. If Homebrew is
+available it will be used; otherwise tools are
+installed to user-writable locations.
 
 ### Prerequisites
 
