@@ -25,9 +25,8 @@ bash <(curl -fsSL https://raw.githubusercontent.com/mikehickman/akqa-onboarding/
 | 3 | Claude Code CLI |
 | 4 | Vertex AI environment variables |
 | 5 | Figma personal access token |
-| 6 | Figma MCP server |
-| 7 | AKQA MCP Bridge (clone, build, configure) |
-| 8 | Superpowers + Designer Skills plugins |
+| 6 | AKQA MCP Bridge (clone, build, configure) |
+| 7 | Superpowers + Designer Skills plugins |
 
 ### Prerequisites
 

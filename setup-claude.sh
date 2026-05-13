@@ -13,6 +13,10 @@ D='\033[0;90m'  N='\033[0m'
 
 CURRENT_PHASE="startup"
 
+# All interactive reads MUST use /dev/tty — stdin may be a pipe
+# (curl ... | bash) or consumed by a subprocess (Homebrew installer)
+ask() { read "$@" < /dev/tty; }
+
 die() {
   echo ""
   echo -e "  ${R}━━━ Setup stopped ━━━${N}"
@@ -70,7 +74,7 @@ preflight() {
     echo ""
     xcode-select --install 2>/dev/null || true
     echo -e "  ${D}Press Enter once the install is finished.${N}"
-    read -r -p "  > " _
+    ask -r -p "  > " _
     if ! xcode-select -p &>/dev/null; then
       die "Xcode Command Line Tools still not detected. Re-run this script after the install finishes."
     fi
@@ -87,7 +91,10 @@ install_homebrew() {
     return 0
   fi
   info "Installing Homebrew (this may take a few minutes)..."
-  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+  # NONINTERACTIVE=1 skips Homebrew's "Press RETURN" prompt.
+  # Stdin is redirected from /dev/tty so the installer can still
+  # ask for the sudo password without consuming the outer script's stdin.
+  NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" < /dev/tty
   # Add Homebrew to PATH for this session (Apple Silicon)
   if [[ -f /opt/homebrew/bin/brew ]]; then
     eval "$(/opt/homebrew/bin/brew shellenv)"
@@ -173,7 +180,7 @@ authenticate_gcp() {
     success "Signed in as ${W}${account}${N}"
     echo ""
     echo -e "  ${D}Press Enter to continue, or type 'n' to switch accounts.${N}"
-    read -r -p "  > " reauth
+    ask -r -p "  > " reauth
     if [[ "$reauth" == "n" || "$reauth" == "N" ]]; then
       echo ""
       info "Opening your browser for Google sign-in..."
@@ -266,7 +273,7 @@ collect_figma_token() {
 
   # Check if already configured
   if [[ -f "$mcp_path" ]]; then
-    existing_token=$(jq -r '.mcpServers.figma.env.FIGMA_API_KEY // empty' "$mcp_path" 2>/dev/null || true)
+    existing_token=$(jq -r '.mcpServers["figma-console"].env.FIGMA_ACCESS_TOKEN // empty' "$mcp_path" 2>/dev/null || true)
   fi
 
   if [[ -n "$existing_token" ]]; then
@@ -274,7 +281,7 @@ collect_figma_token() {
     success "Figma token already configured (${masked})"
     echo ""
     echo -e "  ${D}Press Enter to keep it, or type 'n' to replace it.${N}"
-    read -r -p "  > " keep
+    ask -r -p "  > " keep
     if [[ "$keep" != "n" && "$keep" != "N" ]]; then
       FIGMA_TOKEN="$existing_token"
       return 0
@@ -294,7 +301,7 @@ collect_figma_token() {
   echo -e "  ${D}Paste it below and press Enter.${N}"
   echo -e "  ${D}(Press Enter without pasting to skip — you can add it later.)${N}"
   echo ""
-  read -r -s -p "  Token: " token
+  ask -r -s -p "  Token: " token
   echo ""
 
   if [[ -z "$token" ]]; then
@@ -308,41 +315,7 @@ collect_figma_token() {
 }
 
 # ──────────────────────────────────────────────
-# Phase 6: MCP Configuration
-# ──────────────────────────────────────────────
-configure_mcp() {
-  local mcp_path="$HOME/.claude/mcp.json"
-
-  mkdir -p "$HOME/.claude"
-
-  if [[ -z "${FIGMA_TOKEN:-}" ]]; then
-    warn "Skipping MCP setup (no Figma token)"
-    return 0
-  fi
-
-  # Build mcp.json — preserve any existing servers
-  local existing="{}"
-  if [[ -f "$mcp_path" ]]; then
-    existing=$(cat "$mcp_path")
-  fi
-
-  local new_config
-  new_config=$(echo "$existing" | jq --arg token "$FIGMA_TOKEN" '
-    .mcpServers.figma = {
-      "command": "npx",
-      "args": ["-y", "figma-mcp"],
-      "env": {
-        "FIGMA_API_KEY": $token
-      }
-    }
-  ')
-
-  echo "$new_config" | jq '.' > "$mcp_path"
-  success "Figma MCP configured"
-}
-
-# ──────────────────────────────────────────────
-# Phase 7: AKQA MCP Bridge
+# Phase 6: AKQA MCP Bridge
 # ──────────────────────────────────────────────
 install_akqa_mcp() {
   local repo_dir="$HOME/projects/akqa-mcp"
@@ -527,6 +500,21 @@ verify() {
 main() {
   banner
 
+  # Detect piped invocation (curl ... | bash) — interactive prompts
+  # won't work without a terminal. /dev/tty is the fallback, but
+  # warn clearly so users know the right invocation.
+  if [[ ! -t 0 ]]; then
+    if [[ ! -e /dev/tty ]]; then
+      echo -e "  ${R}This script needs interactive input but no terminal is available.${N}"
+      echo ""
+      echo -e "  ${W}Run it like this instead:${N}"
+      echo -e "  ${D}  bash <(curl -fsSL https://raw.githubusercontent.com/mikehickman/akqa-onboarding/main/setup-claude.sh)${N}"
+      echo ""
+      exit 1
+    fi
+    warn "stdin is not a terminal — using /dev/tty for prompts"
+  fi
+
   # Ensure Homebrew is on PATH regardless of how the script was invoked
   if [[ -f /opt/homebrew/bin/brew ]]; then
     eval "$(/opt/homebrew/bin/brew shellenv)"
@@ -538,8 +526,8 @@ main() {
 
   echo -e "  ${D}This script will install and configure:${N}"
   echo -e "  ${D}  Homebrew, Node.js, Google Cloud CLI,${N}"
-  echo -e "  ${D}  Claude Code, Vertex AI, Figma MCP,${N}"
-  echo -e "  ${D}  AKQA MCP Bridge, and design plugins.${N}"
+  echo -e "  ${D}  Claude Code, Vertex AI, AKQA MCP${N}"
+  echo -e "  ${D}  Bridge, and design plugins.${N}"
   echo ""
   echo -e "  ${D}Already-installed tools will be skipped.${N}"
   echo ""
@@ -548,33 +536,30 @@ main() {
   echo -e "  ${D}Ask your lead if you're not sure.${N}"
   echo ""
   echo -e "  ${W}Press Enter to begin${N} ${D}(or Ctrl-C to cancel)${N}"
-  read -r -p "  > "
+  ask -r -p "  > "
 
-  phase "1/8  Prerequisites"
+  phase "1/7  Prerequisites"
   install_homebrew
   install_jq
   install_node
   install_gcloud
 
-  phase "2/8  GCP Authentication"
+  phase "2/7  GCP Authentication"
   authenticate_gcp
 
-  phase "3/8  Claude Code"
+  phase "3/7  Claude Code"
   install_claude
 
-  phase "4/8  Shell Configuration"
+  phase "4/7  Shell Configuration"
   configure_shell
 
-  phase "5/8  Figma Access"
+  phase "5/7  Figma Access"
   collect_figma_token
 
-  phase "6/8  MCP Servers"
-  configure_mcp
-
-  phase "7/8  AKQA MCP Bridge"
+  phase "6/7  AKQA MCP Bridge"
   install_akqa_mcp
 
-  phase "8/8  Plugins"
+  phase "7/7  Plugins"
   configure_plugins
 
   phase "Verification"
