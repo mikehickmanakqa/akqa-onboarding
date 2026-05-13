@@ -144,9 +144,22 @@ install_gcloud() {
   # Source PATH for this session (path.bash.inc, NOT path.zsh.inc —
   # the zsh file uses syntax that silently fails in bash)
   local sdk_dir
-  sdk_dir="$(brew --prefix)/share/google-cloud-sdk"
+  sdk_dir="$(brew --prefix 2>/dev/null || echo "/opt/homebrew")/share/google-cloud-sdk"
   if [[ -f "$sdk_dir/path.bash.inc" ]]; then
     source "$sdk_dir/path.bash.inc"
+  fi
+  # Fallback: add the bin directory directly if sourcing didn't work
+  if ! command -v gcloud &>/dev/null && [[ -d "$sdk_dir/bin" ]]; then
+    export PATH="$sdk_dir/bin:$PATH"
+  fi
+  # Last resort: check common Homebrew locations
+  if ! command -v gcloud &>/dev/null; then
+    for p in /opt/homebrew/share/google-cloud-sdk/bin /usr/local/share/google-cloud-sdk/bin /opt/homebrew/bin /usr/local/bin; do
+      if [[ -x "$p/gcloud" ]]; then
+        export PATH="$p:$PATH"
+        break
+      fi
+    done
   fi
   if ! command -v gcloud &>/dev/null; then
     die "gcloud was installed but can't be found. Try opening a new terminal and re-running this script."
