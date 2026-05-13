@@ -68,10 +68,13 @@ When akqa-mcp is updated, publish a new pre-built
 release so the setup script picks it up:
 
 ```bash
-./scripts/release-mcp.sh
+bash <(curl -fsSL https://raw.githubusercontent.com/mikehickmanakqa/akqa-onboarding/main/scripts/release-mcp.sh)
 ```
 
-This builds akqa-mcp from `~/projects/akqa-mcp`,
-packages `dist/` and `figma-desktop-bridge/`, and
-uploads to a GitHub Release on this repo. The setup
-script always downloads the latest `mcp-v*` release.
+This clones akqa-mcp, builds it, packages `dist/`
+and `figma-desktop-bridge/`, and uploads to a GitHub
+Release on this repo. If `~/projects/akqa-mcp` exists
+locally it uses that instead of cloning.
+
+The setup script always downloads the latest
+`mcp-v*` release.

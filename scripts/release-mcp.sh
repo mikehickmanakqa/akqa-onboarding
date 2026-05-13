@@ -2,44 +2,66 @@
 # Build akqa-mcp from source and publish as a GitHub Release
 # on the akqa-onboarding repo.
 #
-# Usage:  ./scripts/release-mcp.sh [version]
-#   version defaults to the version in akqa-mcp/package.json
+# One-liner:
+#   bash <(curl -fsSL https://raw.githubusercontent.com/mikehickmanakqa/akqa-onboarding/main/scripts/release-mcp.sh)
+#
+# Uses ~/projects/akqa-mcp if it exists, otherwise clones
+# to a temp directory and cleans up after.
 #
 # Prerequisites:
-#   - gh CLI authenticated
-#   - akqa-mcp cloned at ~/projects/akqa-mcp (or MCP_REPO env var)
+#   - gh CLI authenticated (brew install gh && gh auth login)
 #   - Node.js available
 
 set -euo pipefail
 
-MCP_REPO="${MCP_REPO:-$HOME/projects/akqa-mcp}"
 ONBOARDING_REPO="mikehickmanakqa/akqa-onboarding"
+MCP_REMOTE="https://github.com/mikehickmanakqa/akqa-mcp.git"
+CLEANUP_REPO=false
 
-if [[ ! -d "$MCP_REPO" ]]; then
-  echo "Error: akqa-mcp not found at $MCP_REPO"
-  echo "Clone it first, or set MCP_REPO=/path/to/akqa-mcp"
-  exit 1
-fi
+# ── Preflight ──
 
 if ! command -v gh &>/dev/null; then
-  echo "Error: gh CLI not found. Install: brew install gh"
+  echo "Error: gh CLI not found."
+  echo "  brew install gh && gh auth login"
   exit 1
 fi
 
-# Pull latest
-echo "==> Pulling latest akqa-mcp..."
-(cd "$MCP_REPO" && git pull --ff-only)
+if ! command -v node &>/dev/null; then
+  echo "Error: Node.js not found."
+  exit 1
+fi
 
-# Determine version
-VERSION="${1:-$(node -p "require('$MCP_REPO/package.json').version")}"
+# ── Get the source ──
+
+MCP_REPO="${MCP_REPO:-$HOME/projects/akqa-mcp}"
+
+if [[ -d "$MCP_REPO/.git" ]]; then
+  echo "==> Using local clone at $MCP_REPO"
+  (cd "$MCP_REPO" && git pull --ff-only)
+else
+  MCP_REPO=$(mktemp -d)
+  CLEANUP_REPO=true
+  echo "==> Cloning akqa-mcp to temp directory..."
+  git clone --depth 1 "$MCP_REMOTE" "$MCP_REPO"
+fi
+
+cleanup() { $CLEANUP_REPO && rm -rf "$MCP_REPO"; }
+trap cleanup EXIT
+
+# ── Build ──
+
+VERSION=$(node -p "require('$MCP_REPO/package.json').version")
 TAG="mcp-v${VERSION}"
 echo "==> Version: $VERSION (tag: $TAG)"
 
-# Build
-echo "==> Building..."
-(cd "$MCP_REPO" && npm install --silent && npm run build:local --silent)
+echo "==> Installing dependencies..."
+(cd "$MCP_REPO" && npm install --silent)
 
-# Package — only dist/ and figma-desktop-bridge/
+echo "==> Building..."
+(cd "$MCP_REPO" && npm run build:local --silent)
+
+# ── Package ──
+
 STAGING=$(mktemp -d)
 TARBALL="$STAGING/akqa-mcp-${VERSION}.tar.gz"
 
@@ -51,7 +73,8 @@ tar -czf "$TARBALL" \
 SIZE=$(du -h "$TARBALL" | cut -f1)
 echo "==> Packaged: $TARBALL ($SIZE)"
 
-# Check if release already exists
+# ── Publish ──
+
 if gh release view "$TAG" --repo "$ONBOARDING_REPO" &>/dev/null; then
   echo "==> Release $TAG already exists — updating asset..."
   gh release delete-asset "$TAG" "akqa-mcp-${VERSION}.tar.gz" \
@@ -67,5 +90,5 @@ else
 fi
 
 rm -rf "$STAGING"
-echo "==> Done. Setup script will download from:"
-echo "    https://github.com/$ONBOARDING_REPO/releases/download/$TAG/akqa-mcp-${VERSION}.tar.gz"
+echo ""
+echo "==> Done. New team members will get this version automatically."
