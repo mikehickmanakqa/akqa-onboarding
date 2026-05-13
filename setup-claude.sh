@@ -469,7 +469,82 @@ collect_figma_token() {
 }
 
 # ──────────────────────────────────────────────
-# Phase 6: Plugins
+# Phase 6: AKQA MCP Bridge (pre-built)
+# ──────────────────────────────────────────────
+install_akqa_mcp() {
+  local install_dir="$HOME/projects/akqa-mcp"
+  local mcp_path="$HOME/.claude/mcp.json"
+  local repo="mikehickmanakqa/akqa-onboarding"
+
+  if [[ -f "$install_dir/dist/local.js" ]]; then
+    success "AKQA MCP already installed at $install_dir"
+  else
+    info "Downloading AKQA MCP Bridge..."
+
+    # Get the latest mcp-v* release asset URL
+    local asset_url
+    asset_url=$(curl -fsSL "https://api.github.com/repos/$repo/releases" \
+      | jq -r '[.[] | select(.tag_name | startswith("mcp-v"))][0].assets[0].browser_download_url // empty' 2>/dev/null)
+
+    if [[ -z "$asset_url" ]]; then
+      warn "No AKQA MCP release found — skipping"
+      echo -e "  ${D}Ask your lead to run: ${W}./scripts/release-mcp.sh${N}"
+      return 0
+    fi
+
+    local tmp_tar
+    tmp_tar=$(mktemp)
+    curl -fL --progress-bar "$asset_url" -o "$tmp_tar" \
+      || die "Download failed. Check your internet connection."
+
+    mkdir -p "$install_dir"
+    tar -xzf "$tmp_tar" -C "$install_dir"
+    rm -f "$tmp_tar"
+    success "Installed to $install_dir"
+  fi
+
+  # Configure figma-console in mcp.json
+  if [[ -z "${FIGMA_TOKEN:-}" ]]; then
+    warn "Skipping MCP config (no Figma token)"
+    return 0
+  fi
+
+  local existing="{}"
+  if [[ -f "$mcp_path" ]]; then
+    existing=$(cat "$mcp_path")
+  fi
+
+  local updated
+  updated=$(echo "$existing" | jq \
+    --arg token "$FIGMA_TOKEN" \
+    --arg script "$install_dir/dist/local.js" '
+    .mcpServers["figma-console"] = {
+      "command": "node",
+      "args": [$script],
+      "env": {
+        "FIGMA_ACCESS_TOKEN": $token,
+        "ENABLE_MCP_APPS": "true"
+      }
+    }
+  ')
+
+  echo "$updated" | jq '.' > "$mcp_path"
+  success "figma-console MCP configured"
+
+  echo ""
+  echo -e "  ${Y}── Manual step ──${N}"
+  echo -e "  ${D}Import the Figma plugin (one-time):${N}"
+  echo -e "  ${D}  1. Open Figma Desktop${N}"
+  echo -e "  ${D}  2. Plugins → Development → Import plugin${N}"
+  echo -e "  ${D}     from manifest${N}"
+  echo -e "  ${D}  3. Select:${N}"
+  echo -e "  ${W}     ~/projects/akqa-mcp/figma-desktop-bridge/manifest.json${N}"
+  echo -e "  ${D}  4. Click Open${N}"
+  echo ""
+}
+
+# ──────────────────────────────────────────────
+# Phase 7: Plugins
 # ──────────────────────────────────────────────
 configure_plugins() {
   local settings_path="$HOME/.claude/settings.json"
@@ -609,7 +684,7 @@ main() {
 
   echo -e "  ${D}This script will install and configure:${N}"
   echo -e "  ${D}  Node.js, Google Cloud CLI, Claude Code,${N}"
-  echo -e "  ${D}  Vertex AI, Figma access, and${N}"
+  echo -e "  ${D}  Vertex AI, AKQA MCP Bridge, and${N}"
   echo -e "  ${D}  design plugins. No sudo required.${N}"
   echo ""
   echo -e "  ${D}Already-installed tools will be skipped.${N}"
@@ -621,7 +696,7 @@ main() {
   echo -e "  ${W}Press Enter to begin${N} ${D}(or Ctrl-C to cancel)${N}"
   ask -r -p "  > "
 
-  phase "1/6  Prerequisites"
+  phase "1/7  Prerequisites"
   detect_homebrew
   ensure_local_bin
   install_jq
@@ -629,19 +704,22 @@ main() {
   install_python
   install_gcloud
 
-  phase "2/6  GCP Authentication"
+  phase "2/7  GCP Authentication"
   authenticate_gcp
 
-  phase "3/6  Claude Code"
+  phase "3/7  Claude Code"
   install_claude
 
-  phase "4/6  Shell Configuration"
+  phase "4/7  Shell Configuration"
   configure_shell
 
-  phase "5/6  Figma Access"
+  phase "5/7  Figma Access"
   collect_figma_token
 
-  phase "6/6  Plugins"
+  phase "6/7  AKQA MCP Bridge"
+  install_akqa_mcp
+
+  phase "7/7  Plugins"
   configure_plugins
 
   phase "Verification"
