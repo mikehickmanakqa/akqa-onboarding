@@ -80,6 +80,10 @@ preflight() {
     fi
   fi
   success "Xcode Command Line Tools OK"
+
+  if ! command -v git &>/dev/null; then
+    die "git is not available. It should come with Xcode Command Line Tools — try: xcode-select --install"
+  fi
 }
 
 # ──────────────────────────────────────────────
@@ -127,7 +131,11 @@ install_node() {
     info "Installing Node.js via nvm (no sudo needed)..."
     export NVM_DIR="$HOME/.nvm"
     mkdir -p "$NVM_DIR"
-    curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | PROFILE=/dev/null bash
+    local nvm_script
+    nvm_script=$(mktemp)
+    curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh -o "$nvm_script"
+    PROFILE=/dev/null bash "$nvm_script"
+    rm -f "$nvm_script"
     # Load nvm for this session
     # shellcheck source=/dev/null
     source "$NVM_DIR/nvm.sh"
@@ -206,7 +214,8 @@ install_gcloud() {
     fi
     local tmp_tar
     tmp_tar=$(mktemp)
-    curl -fsSL "$url" -o "$tmp_tar"
+    info "Downloading (~500 MB — this takes a few minutes)..."
+    curl -fL --progress-bar "$url" -o "$tmp_tar"
     # Remove existing partial install if present
     rm -rf "$HOME/google-cloud-sdk"
     tar -xzf "$tmp_tar" -C "$HOME"
@@ -286,6 +295,10 @@ authenticate_gcp() {
     info "Setting up application default credentials..."
     gcloud auth application-default login
   fi
+
+  # Bind quota project so Claude Code bills to the right place
+  info "Setting ADC quota project..."
+  gcloud auth application-default set-quota-project "$GCP_PROJECT" 2>/dev/null || true
   success "GCP authentication complete"
 }
 
@@ -321,8 +334,23 @@ configure_shell() {
   local marker="# AKQA Claude Code — managed by setup-claude.sh"
 
   if grep -q "$marker" "$shell_rc" 2>/dev/null; then
-    success "Shell already configured (skipping)"
-    return 0
+    # Older versions may lack nvm/gcloud PATH lines or CLOUD_ML_REGION — update if so
+    if ! grep -q 'nvm.sh' "$shell_rc" 2>/dev/null || ! grep -q 'CLOUD_ML_REGION' "$shell_rc" 2>/dev/null; then
+      info "Updating shell config (new settings available)..."
+      cp "$shell_rc" "${shell_rc}.backup.$(date +%s)" 2>/dev/null || true
+      # Remove old block and re-add below
+      sed -i '' "/$marker/,/^$/d" "$shell_rc"
+    else
+      success "Shell already configured (skipping)"
+      # Still export for this session
+      export CLAUDE_CODE_USE_VERTEX=1
+      export ANTHROPIC_VERTEX_PROJECT_ID="$GCP_PROJECT"
+      export CLOUD_ML_REGION="us-east5"
+      export GCLOUD_PROJECT="$GCP_PROJECT"
+      export GOOGLE_CLOUD_PROJECT="$GCP_PROJECT"
+      export GOOGLE_APPLICATION_CREDENTIALS="$HOME/.config/gcloud/application_default_credentials.json"
+      return 0
+    fi
   fi
 
   info "Adding Vertex AI configuration to ~/.zshrc"
@@ -335,6 +363,7 @@ configure_shell() {
 # AKQA Claude Code — managed by setup-claude.sh
 export CLAUDE_CODE_USE_VERTEX=1
 export ANTHROPIC_VERTEX_PROJECT_ID=akqa-us-ai-playground
+export CLOUD_ML_REGION=us-east5
 export GCLOUD_PROJECT="$ANTHROPIC_VERTEX_PROJECT_ID"
 export GOOGLE_CLOUD_PROJECT="$ANTHROPIC_VERTEX_PROJECT_ID"
 export GOOGLE_APPLICATION_CREDENTIALS="$HOME/.config/gcloud/application_default_credentials.json"
@@ -348,6 +377,7 @@ SHELL_BLOCK
   # Source for this session
   export CLAUDE_CODE_USE_VERTEX=1
   export ANTHROPIC_VERTEX_PROJECT_ID="$GCP_PROJECT"
+  export CLOUD_ML_REGION="us-east5"
   export GCLOUD_PROJECT="$GCP_PROJECT"
   export GOOGLE_CLOUD_PROJECT="$GCP_PROJECT"
   export GOOGLE_APPLICATION_CREDENTIALS="$HOME/.config/gcloud/application_default_credentials.json"
@@ -418,7 +448,15 @@ install_akqa_mcp() {
   else
     info "Cloning akqa-mcp..."
     mkdir -p "$HOME/projects"
-    git clone https://github.com/mikehickmanakqa/akqa-mcp.git "$repo_dir"
+    if ! git clone https://github.com/mikehickmanakqa/akqa-mcp.git "$repo_dir" 2>&1; then
+      echo ""
+      fail "Could not clone akqa-mcp."
+      echo -e "  ${D}This is a private repo. Make sure you have access:${N}"
+      echo -e "  ${D}  1. Go to ${W}github.com/mikehickmanakqa/akqa-mcp${N}"
+      echo -e "  ${D}  2. If you get a 404, ask your lead for repo access${N}"
+      echo -e "  ${D}  3. Set up a GitHub personal access token or SSH key${N}"
+      die "Git clone failed — see above."
+    fi
     success "Cloned to $repo_dir"
   fi
 
