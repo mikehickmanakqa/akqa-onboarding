@@ -149,21 +149,12 @@ install_node() {
 }
 
 install_python() {
-  if command -v python3 &>/dev/null; then
-    local ver
-    ver=$(python3 --version 2>/dev/null || echo "unknown")
-    success "Python 3 already installed ($ver)"
-    return 0
-  fi
-
-  if $HAS_BREW; then
-    info "Installing Python 3 via Homebrew..."
-    brew install python
-    hash -r 2>/dev/null || true
-  else
-    # Xcode CLT (required in preflight) provides /usr/bin/python3
-    # If it's still missing, there's nothing sudo-free we can do
-    if [[ -x /usr/bin/python3 ]]; then
+  if ! command -v python3 &>/dev/null; then
+    if $HAS_BREW; then
+      info "Installing Python 3 via Homebrew..."
+      brew install python
+      hash -r 2>/dev/null || true
+    elif [[ -x /usr/bin/python3 ]]; then
       export PATH="/usr/bin:$PATH"
     else
       die "Python 3 is required but not found. It should come with Xcode Command Line Tools — try: xcode-select --install"
@@ -173,7 +164,21 @@ install_python() {
   if ! command -v python3 &>/dev/null; then
     die "Python 3 installation failed."
   fi
-  success "Python 3 installed ($(python3 --version))"
+
+  # gcloud requires Python 3.10+
+  local py_ver minor
+  py_ver=$(python3 -c 'import sys; print(f"{sys.version_info.minor}")' 2>/dev/null || echo "0")
+  if (( py_ver < 10 )); then
+    echo ""
+    fail "Python 3.${py_ver} is installed, but Google Cloud CLI requires 3.10+."
+    echo -e "  ${D}The easiest fix:${N}"
+    echo -e "  ${D}  1. Install Python 3.12+ from ${W}python.org/downloads${N}"
+    echo -e "  ${D}  2. Re-run this setup script${N}"
+    echo ""
+    echo -e "  ${D}If you have Homebrew: ${W}brew install python${N}"
+    die "Python version too old for gcloud — need 3.10+, have 3.${py_ver}"
+  fi
+  success "Python 3.${py_ver} installed"
 }
 
 install_gcloud() {
@@ -276,13 +281,17 @@ authenticate_gcp() {
       echo ""
       info "Opening your browser for Google sign-in..."
       echo -e "  ${D}Sign in with your AKQA account, then come back here.${N}"
-      gcloud auth login --update-adc
+      if ! gcloud auth login --update-adc; then
+        die "Google sign-in failed. Re-run the script to try again."
+      fi
     fi
   else
     echo ""
     info "Opening your browser for Google sign-in..."
     echo -e "  ${D}Sign in with your AKQA account, then come back here.${N}"
-    gcloud auth login --update-adc
+    if ! gcloud auth login --update-adc; then
+      die "Google sign-in failed. Re-run the script to try again."
+    fi
   fi
 
   # Now set the project — requires an authenticated account with access
