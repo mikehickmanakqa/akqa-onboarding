@@ -45,7 +45,7 @@ else
   git clone --depth 1 "$MCP_REMOTE" "$MCP_REPO"
 fi
 
-cleanup() { $CLEANUP_REPO && rm -rf "$MCP_REPO"; }
+cleanup() { $CLEANUP_REPO && rm -rf "$MCP_REPO" || true; }
 trap cleanup EXIT
 
 # ── Build ──
