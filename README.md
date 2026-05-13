@@ -5,8 +5,8 @@ One command. Everything configured.
 ### What it does
 
 Installs and configures a Mac for Claude Code with
-Vertex AI billing, Figma MCP, the AKQA MCP Bridge,
-and design skill plugins.
+Vertex AI billing, Figma access, and design skill
+plugins.
 
 Already-installed tools are detected and skipped.
 
@@ -25,8 +25,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/mikehickmanakqa/akqa-onboard
 | 3 | Claude Code CLI |
 | 4 | Vertex AI environment variables |
 | 5 | Figma personal access token |
-| 6 | AKQA MCP Bridge (clone, build, configure) |
-| 7 | Superpowers + Designer Skills plugins |
+| 6 | Superpowers + Designer Skills plugins |
 
 No admin/sudo access required. If Homebrew is
 available it will be used; otherwise tools are
@@ -39,18 +38,6 @@ installed to user-writable locations.
   `akqa-us-ai-playground` GCP project
 - A Figma personal access token (the script will
   prompt you to paste it)
-
-### One manual step
-
-After the script finishes, import the Figma plugin:
-
-1. Open **Figma Desktop**
-2. **Plugins → Development → Import plugin from manifest**
-3. Select `~/projects/akqa-mcp/figma-desktop-bridge/manifest.json`
-4. Click **Open**
-
-This is a one-time import. The plugin persists across
-Figma restarts.
 
 ### After setup
 

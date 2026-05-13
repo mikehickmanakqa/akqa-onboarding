@@ -427,7 +427,7 @@ collect_figma_token() {
 
   # Check if already configured
   if [[ -f "$mcp_path" ]]; then
-    existing_token=$(jq -r '.mcpServers["figma-console"].env.FIGMA_ACCESS_TOKEN // empty' "$mcp_path" 2>/dev/null || true)
+    existing_token=$(jq -r '[.mcpServers[].env.FIGMA_ACCESS_TOKEN // empty] | map(select(. != "")) | first // empty' "$mcp_path" 2>/dev/null || true)
   fi
 
   if [[ -n "$existing_token" ]]; then
@@ -469,86 +469,7 @@ collect_figma_token() {
 }
 
 # ──────────────────────────────────────────────
-# Phase 6: AKQA MCP Bridge
-# ──────────────────────────────────────────────
-install_akqa_mcp() {
-  local repo_dir="$HOME/projects/akqa-mcp"
-  local mcp_path="$HOME/.claude/mcp.json"
-
-  # Clone if not present
-  if [[ -d "$repo_dir" ]]; then
-    success "akqa-mcp already cloned at $repo_dir"
-  else
-    info "Cloning akqa-mcp..."
-    mkdir -p "$HOME/projects"
-    if ! git clone https://github.com/mikehickmanakqa/akqa-mcp.git "$repo_dir" 2>&1; then
-      echo ""
-      fail "Could not clone akqa-mcp."
-      echo -e "  ${D}This is a private repo. Make sure you have access:${N}"
-      echo -e "  ${D}  1. Go to ${W}github.com/mikehickmanakqa/akqa-mcp${N}"
-      echo -e "  ${D}  2. If you get a 404, ask your lead for repo access${N}"
-      echo -e "  ${D}  3. Set up a GitHub personal access token or SSH key${N}"
-      die "Git clone failed — see above."
-    fi
-    success "Cloned to $repo_dir"
-  fi
-
-  # Install and build — show output only on failure
-  info "Installing dependencies and building (about 30 seconds)..."
-  local build_log
-  build_log=$(mktemp)
-  if (cd "$repo_dir" && npm install 2>&1 && npm run build:local 2>&1) > "$build_log" 2>&1; then
-    rm -f "$build_log"
-    success "akqa-mcp built"
-  else
-    echo ""
-    fail "Build failed:"
-    tail -30 "$build_log" | sed 's/^/    /'
-    rm -f "$build_log"
-    die "AKQA MCP Bridge failed to build."
-  fi
-
-  # Add figma-console to mcp.json (reuses Figma token)
-  if [[ -z "${FIGMA_TOKEN:-}" ]]; then
-    warn "Skipping figma-console MCP (no Figma token)"
-    return 0
-  fi
-
-  local existing="{}"
-  if [[ -f "$mcp_path" ]]; then
-    existing=$(cat "$mcp_path")
-  fi
-
-  local updated
-  updated=$(echo "$existing" | jq \
-    --arg token "$FIGMA_TOKEN" \
-    --arg script "$repo_dir/dist/local.js" '
-    .mcpServers["figma-console"] = {
-      "command": "node",
-      "args": [$script],
-      "env": {
-        "FIGMA_ACCESS_TOKEN": $token,
-        "ENABLE_MCP_APPS": "true"
-      }
-    }
-  ')
-
-  echo "$updated" | jq '.' > "$mcp_path"
-  success "figma-console MCP configured"
-
-  # Print the one manual step
-  echo ""
-  echo -e "  ${Y}── Manual step ──${N}"
-  echo -e "  ${D}Import the Figma plugin (one-time):${N}"
-  echo -e "  ${D}  1. Open Figma Desktop${N}"
-  echo -e "  ${D}  2. Plugins → Development → Import plugin from manifest${N}"
-  echo -e "  ${D}  3. Select: ${W}~/projects/akqa-mcp/figma-desktop-bridge/manifest.json${N}"
-  echo -e "  ${D}  4. Click Open${N}"
-  echo ""
-}
-
-# ──────────────────────────────────────────────
-# Phase 8: Plugins
+# Phase 6: Plugins
 # ──────────────────────────────────────────────
 configure_plugins() {
   local settings_path="$HOME/.claude/settings.json"
@@ -688,7 +609,7 @@ main() {
 
   echo -e "  ${D}This script will install and configure:${N}"
   echo -e "  ${D}  Node.js, Google Cloud CLI, Claude Code,${N}"
-  echo -e "  ${D}  Vertex AI, AKQA MCP Bridge, and${N}"
+  echo -e "  ${D}  Vertex AI, Figma access, and${N}"
   echo -e "  ${D}  design plugins. No sudo required.${N}"
   echo ""
   echo -e "  ${D}Already-installed tools will be skipped.${N}"
@@ -700,7 +621,7 @@ main() {
   echo -e "  ${W}Press Enter to begin${N} ${D}(or Ctrl-C to cancel)${N}"
   ask -r -p "  > "
 
-  phase "1/7  Prerequisites"
+  phase "1/6  Prerequisites"
   detect_homebrew
   ensure_local_bin
   install_jq
@@ -708,22 +629,19 @@ main() {
   install_python
   install_gcloud
 
-  phase "2/7  GCP Authentication"
+  phase "2/6  GCP Authentication"
   authenticate_gcp
 
-  phase "3/7  Claude Code"
+  phase "3/6  Claude Code"
   install_claude
 
-  phase "4/7  Shell Configuration"
+  phase "4/6  Shell Configuration"
   configure_shell
 
-  phase "5/7  Figma Access"
+  phase "5/6  Figma Access"
   collect_figma_token
 
-  phase "6/7  AKQA MCP Bridge"
-  install_akqa_mcp
-
-  phase "7/7  Plugins"
+  phase "6/6  Plugins"
   configure_plugins
 
   phase "Verification"
