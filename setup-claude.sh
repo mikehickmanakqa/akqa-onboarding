@@ -86,6 +86,14 @@ preflight() {
 # Phase 1: Prerequisites
 # ──────────────────────────────────────────────
 install_homebrew() {
+  # brew may exist but not be on PATH in this bash context
+  if ! command -v brew &>/dev/null; then
+    if [[ -f /opt/homebrew/bin/brew ]]; then
+      eval "$(/opt/homebrew/bin/brew shellenv)"
+    elif [[ -f /usr/local/bin/brew ]]; then
+      eval "$(/usr/local/bin/brew shellenv)"
+    fi
+  fi
   if command -v brew &>/dev/null; then
     success "Homebrew already installed"
     return 0
