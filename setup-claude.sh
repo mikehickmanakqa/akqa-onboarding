@@ -327,7 +327,7 @@ install_akqa_mcp() {
   else
     info "Cloning akqa-mcp..."
     mkdir -p "$HOME/projects"
-    git clone https://github.com/mikehickman/akqa-mcp.git "$repo_dir"
+    git clone https://github.com/mikehickmanakqa/akqa-mcp.git "$repo_dir"
     success "Cloned to $repo_dir"
   fi
 
@@ -508,7 +508,7 @@ main() {
       echo -e "  ${R}This script needs interactive input but no terminal is available.${N}"
       echo ""
       echo -e "  ${W}Run it like this instead:${N}"
-      echo -e "  ${D}  bash <(curl -fsSL https://raw.githubusercontent.com/mikehickman/akqa-onboarding/main/setup-claude.sh)${N}"
+      echo -e "  ${D}  bash <(curl -fsSL https://raw.githubusercontent.com/mikehickmanakqa/akqa-onboarding/main/setup-claude.sh)${N}"
       echo ""
       exit 1
     fi

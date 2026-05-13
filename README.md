@@ -13,7 +13,7 @@ Already-installed tools are detected and skipped.
 ### Quick start
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/mikehickman/akqa-onboarding/main/setup-claude.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/mikehickmanakqa/akqa-onboarding/main/setup-claude.sh)
 ```
 
 ### What gets installed
