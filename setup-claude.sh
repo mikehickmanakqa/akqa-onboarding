@@ -100,8 +100,14 @@ detect_homebrew() {
     fi
   fi
   if command -v brew &>/dev/null; then
-    HAS_BREW=true
-    success "Homebrew detected"
+    local brew_prefix
+    brew_prefix="$(brew --prefix 2>/dev/null)"
+    if [[ -n "$brew_prefix" ]] && [[ -w "$brew_prefix" ]]; then
+      HAS_BREW=true
+      success "Homebrew detected"
+    else
+      info "Homebrew found but permissions are broken — using standalone installers"
+    fi
   else
     info "Homebrew not found — using standalone installers (no sudo needed)"
   fi
