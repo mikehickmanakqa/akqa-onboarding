@@ -257,7 +257,8 @@ install_gcloud() {
   rm -rf "$HOME/google-cloud-sdk"
   tar -xzf "$tmp_tar" -C "$HOME"
   rm -f "$tmp_tar"
-  "$HOME/google-cloud-sdk/install.sh" --quiet --path-update=false
+  CLOUDSDK_PYTHON="$(command -v python3)" \
+    "$HOME/google-cloud-sdk/install.sh" --quiet --path-update=false --install-python=false
   export PATH="$HOME/google-cloud-sdk/bin:$PATH"
 
   if ! command -v gcloud &>/dev/null; then
