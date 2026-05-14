@@ -205,8 +205,11 @@ install_gcloud() {
     done
   fi
   if command -v gcloud &>/dev/null; then
-    success "Google Cloud CLI already installed"
-    return 0
+    if gcloud version &>/dev/null; then
+      success "Google Cloud CLI already installed"
+      return 0
+    fi
+    warn "gcloud found but broken (Python issue) — reinstalling..."
   fi
 
   if $HAS_BREW; then
@@ -244,6 +247,9 @@ install_gcloud() {
 
   if ! command -v gcloud &>/dev/null; then
     die "gcloud was installed but can't be found. Try opening a new terminal and re-running this script."
+  fi
+  if ! gcloud version &>/dev/null; then
+    die "gcloud installed but not working (Python dependency issue). Try: brew reinstall google-cloud-sdk"
   fi
   success "Google Cloud CLI installed"
 }
