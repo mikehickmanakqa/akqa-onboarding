@@ -123,13 +123,16 @@ ensure_local_bin() {
 
 install_node() {
   if command -v node &>/dev/null; then
-    local ver
-    ver=$(node --version 2>/dev/null || echo "unknown")
-    success "Node.js already installed ($ver)"
-    return 0
+    local npm_prefix
+    npm_prefix=$(npm config get prefix 2>/dev/null || echo "")
+    if [[ -n "$npm_prefix" ]] && [[ -w "$npm_prefix" ]]; then
+      success "Node.js already installed ($(node --version 2>/dev/null))"
+      return 0
+    fi
+    warn "Node.js found but npm can't write to $npm_prefix — installing via nvm..."
   fi
 
-  if $HAS_BREW; then
+  if $HAS_BREW && ! command -v node &>/dev/null; then
     info "Installing Node.js via Homebrew..."
     brew install node
     hash -r 2>/dev/null || true
@@ -142,7 +145,6 @@ install_node() {
     curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh -o "$nvm_script"
     PROFILE=/dev/null bash "$nvm_script"
     rm -f "$nvm_script"
-    # Load nvm for this session
     # shellcheck source=/dev/null
     source "$NVM_DIR/nvm.sh"
     nvm install --lts
@@ -360,11 +362,10 @@ install_claude() {
     success "Claude Code already installed ($ver)"
     return 0
   fi
-  # Check npm won't hit permission errors
   local npm_prefix
   npm_prefix=$(npm config get prefix 2>/dev/null || echo "")
-  if [[ "$npm_prefix" == "/usr/local" || "$npm_prefix" == "/" ]]; then
-    die "npm's global folder ($npm_prefix) requires admin access. Try re-running this script to install Node via nvm."
+  if [[ -n "$npm_prefix" ]] && [[ ! -w "$npm_prefix" ]]; then
+    die "npm's global folder ($npm_prefix) isn't writable. Try deleting the existing Node.js and re-running this script."
   fi
 
   info "Installing Claude Code CLI (about 30 seconds)..."
