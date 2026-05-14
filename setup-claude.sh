@@ -209,10 +209,13 @@ install_gcloud() {
       success "Google Cloud CLI already installed"
       return 0
     fi
-    warn "gcloud found but broken (Python issue) — reinstalling..."
+    warn "gcloud found but broken (Python issue) — installing standalone copy..."
   fi
 
-  if $HAS_BREW; then
+  if command -v gcloud &>/dev/null && ! gcloud version &>/dev/null; then
+    # Broken install (e.g. Homebrew with bad Python) — skip Brew, go straight to standalone
+    :
+  elif $HAS_BREW; then
     info "Installing Google Cloud CLI via Homebrew..."
     brew install --cask google-cloud-sdk
     local sdk_dir
@@ -223,33 +226,37 @@ install_gcloud() {
     if ! command -v gcloud &>/dev/null && [[ -d "$sdk_dir/bin" ]]; then
       export PATH="$sdk_dir/bin:$PATH"
     fi
-  else
-    info "Installing Google Cloud CLI (no sudo needed)..."
-    local arch
-    arch=$(uname -m)
-    local url
-    if [[ "$arch" == "arm64" ]]; then
-      url="https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-darwin-arm.tar.gz"
-    else
-      url="https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-darwin-x86_64.tar.gz"
+    if command -v gcloud &>/dev/null && gcloud version &>/dev/null; then
+      success "Google Cloud CLI installed"
+      return 0
     fi
-    local tmp_tar
-    tmp_tar=$(mktemp)
-    info "Downloading (~500 MB — this takes a few minutes)..."
-    curl -fL --progress-bar "$url" -o "$tmp_tar"
-    # Remove existing partial install if present
-    rm -rf "$HOME/google-cloud-sdk"
-    tar -xzf "$tmp_tar" -C "$HOME"
-    rm -f "$tmp_tar"
-    "$HOME/google-cloud-sdk/install.sh" --quiet --path-update=false
-    export PATH="$HOME/google-cloud-sdk/bin:$PATH"
+    warn "Homebrew gcloud not working — falling back to standalone install..."
   fi
+
+  info "Installing Google Cloud CLI (no sudo needed)..."
+  local arch
+  arch=$(uname -m)
+  local url
+  if [[ "$arch" == "arm64" ]]; then
+    url="https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-darwin-arm.tar.gz"
+  else
+    url="https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-darwin-x86_64.tar.gz"
+  fi
+  local tmp_tar
+  tmp_tar=$(mktemp)
+  info "Downloading (~500 MB — this takes a few minutes)..."
+  curl -fL --progress-bar "$url" -o "$tmp_tar"
+  rm -rf "$HOME/google-cloud-sdk"
+  tar -xzf "$tmp_tar" -C "$HOME"
+  rm -f "$tmp_tar"
+  "$HOME/google-cloud-sdk/install.sh" --quiet --path-update=false
+  export PATH="$HOME/google-cloud-sdk/bin:$PATH"
 
   if ! command -v gcloud &>/dev/null; then
     die "gcloud was installed but can't be found. Try opening a new terminal and re-running this script."
   fi
   if ! gcloud version &>/dev/null; then
-    die "gcloud installed but not working (Python dependency issue). Try: brew reinstall google-cloud-sdk"
+    die "gcloud installed but still not working. Try opening a new terminal and re-running this script."
   fi
   success "Google Cloud CLI installed"
 }
