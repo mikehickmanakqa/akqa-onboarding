@@ -453,28 +453,18 @@ configure_plugins() {
   fi
 
   # Merge plugin config into existing settings
+  # NOTE: intentionally NOT adding the "designer-skills" marketplace here.
+  # That marketplace (github.com/Owl-Listener/designer-skills) is not part
+  # of the vetted local akqa-vault setup script and was pulling in autoUpdate
+  # plugins from an unverified third-party source. Only enabling the
+  # official Superpowers plugin, which matches local trusted config.
   local updated
   updated=$(echo "$existing" | jq '
-    .enabledPlugins["superpowers@claude-plugins-official"] = true |
-    .enabledPlugins["design-research@designer-skills"] = true |
-    .enabledPlugins["design-systems@designer-skills"] = true |
-    .enabledPlugins["designer-toolkit@designer-skills"] = true |
-    .enabledPlugins["interaction-design@designer-skills"] = true |
-    .enabledPlugins["prototyping-testing@designer-skills"] = true |
-    .enabledPlugins["ui-design@designer-skills"] = true |
-    .enabledPlugins["ux-strategy@designer-skills"] = true |
-    .extraKnownMarketplaces["designer-skills"] = {
-      "source": {
-        "source": "git",
-        "url": "https://github.com/Owl-Listener/designer-skills.git"
-      },
-      "autoUpdate": true
-    }
+    .enabledPlugins["superpowers@claude-plugins-official"] = true
   ')
 
   echo "$updated" | jq '.' > "$settings_path"
   success "Superpowers plugin enabled"
-  success "Designer Skills plugin enabled"
 }
 
 # ──────────────────────────────────────────────
