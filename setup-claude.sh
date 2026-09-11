@@ -2,7 +2,7 @@
 set -uo pipefail
 
 # ──────────────────────────────────────────────
-# AKQA Design Studio — Claude Code Setup
+# AKQA Claude Code Bootstrap
 # One command. Everything configured.
 # ──────────────────────────────────────────────
 
@@ -32,13 +32,12 @@ die() {
 trap 'die "Unexpected error (line $LINENO)"' ERR
 
 GCP_PROJECT="akqa-us-ai-playground"
-DEFAULT_MODEL="claude-sonnet-4-6"
 
 banner() {
   echo ""
   echo -e "${B}  ╔══════════════════════════════════════╗${N}"
-  echo -e "${B}  ║${W}   AKQA Design Studio                 ${B}║${N}"
-  echo -e "${B}  ║${D}   Claude Code + Vertex AI + Figma    ${B}║${N}"
+  echo -e "${B}  ║${W}   AKQA Claude Code Bootstrap          ${B}║${N}"
+  echo -e "${B}  ║${D}   Claude Code + Vertex AI             ${B}║${N}"
   echo -e "${B}  ╚══════════════════════════════════════╝${N}"
   echo ""
 }
@@ -270,34 +269,6 @@ install_gcloud() {
   success "Google Cloud CLI installed"
 }
 
-install_jq() {
-  if command -v jq &>/dev/null; then
-    return 0
-  fi
-
-  if $HAS_BREW; then
-    info "Installing jq via Homebrew..."
-    brew install jq
-  else
-    info "Installing jq (no sudo needed)..."
-    local arch
-    arch=$(uname -m)
-    local url
-    if [[ "$arch" == "arm64" ]]; then
-      url="https://github.com/jqlang/jq/releases/latest/download/jq-macos-arm64"
-    else
-      url="https://github.com/jqlang/jq/releases/latest/download/jq-macos-amd64"
-    fi
-    curl -fsSL "$url" -o "$HOME/.local/bin/jq"
-    chmod +x "$HOME/.local/bin/jq"
-  fi
-
-  if ! command -v jq &>/dev/null; then
-    die "jq installation failed."
-  fi
-  success "jq installed"
-}
-
 # ──────────────────────────────────────────────
 # Phase 2: GCP Authentication
 # ──────────────────────────────────────────────
@@ -440,34 +411,6 @@ SHELL_BLOCK
 }
 
 # ──────────────────────────────────────────────
-# Phase 5: Plugins
-# ──────────────────────────────────────────────
-configure_plugins() {
-  local settings_path="$HOME/.claude/settings.json"
-
-  mkdir -p "$HOME/.claude"
-
-  local existing="{}"
-  if [[ -f "$settings_path" ]]; then
-    existing=$(cat "$settings_path")
-  fi
-
-  # Merge plugin config into existing settings
-  # NOTE: intentionally NOT adding the "designer-skills" marketplace here.
-  # That marketplace (github.com/Owl-Listener/designer-skills) is not part
-  # of the vetted local akqa-vault setup script and was pulling in autoUpdate
-  # plugins from an unverified third-party source. Only enabling the
-  # official Superpowers plugin, which matches local trusted config.
-  local updated
-  updated=$(echo "$existing" | jq '
-    .enabledPlugins["superpowers@claude-plugins-official"] = true
-  ')
-
-  echo "$updated" | jq '.' > "$settings_path"
-  success "Superpowers plugin enabled"
-}
-
-# ──────────────────────────────────────────────
 # Verification
 # ──────────────────────────────────────────────
 verify() {
@@ -505,12 +448,6 @@ verify() {
     warn "Vertex AI env vars not in current session (restart terminal)"
   fi
 
-  if [[ -f "$HOME/.claude/settings.json" ]]; then
-    local plugins
-    plugins=$(jq -r '.enabledPlugins | keys | length' "$HOME/.claude/settings.json" 2>/dev/null || echo "0")
-    success "Plugins configured: $plugins"
-  fi
-
   echo ""
   if $all_good; then
     echo -e "  ${G}══════════════════════════════════════${N}"
@@ -520,8 +457,10 @@ verify() {
     echo -e "  ${D}Open a new terminal, then:${N}"
     echo -e "  ${W}  claude${N}"
     echo ""
-    echo -e "  ${D}First launch will download plugins.${N}"
-    echo -e "  ${D}Takes about a minute.${N}"
+    echo -e "  ${W}Next:${N} ${D}get the AKQA Intelligence plugin${N}"
+    echo -e "  ${D}(role-specific skills + shared knowledge):${N}"
+    echo -e "  ${D}  git clone https://github.com/mikehickmanakqa/akqa-intelligence.git${N}"
+    echo -e "  ${D}  cd akqa-intelligence && bash setup-claude.sh${N}"
   else
     echo -e "  ${Y}══════════════════════════════════════${N}"
     echo -e "  ${Y}  Partially configured — see above.${N}"
@@ -562,7 +501,7 @@ main() {
 
   echo -e "  ${D}This script will install and configure:${N}"
   echo -e "  ${D}  Node.js, Google Cloud CLI, Claude Code,${N}"
-  echo -e "  ${D}  Vertex AI, and design plugins.${N}"
+  echo -e "  ${D}  and Vertex AI.${N}"
   echo -e "  ${D}  No sudo required.${N}"
   echo ""
   echo -e "  ${D}Already-installed tools will be skipped.${N}"
@@ -574,25 +513,21 @@ main() {
   echo -e "  ${W}Press Enter to begin${N} ${D}(or Ctrl-C to cancel)${N}"
   ask -r -p "  > "
 
-  phase "1/5  Prerequisites"
+  phase "1/4  Prerequisites"
   detect_homebrew
   ensure_local_bin
-  install_jq
   install_node
   install_python
   install_gcloud
 
-  phase "2/5  GCP Authentication"
+  phase "2/4  GCP Authentication"
   authenticate_gcp
 
-  phase "3/5  Claude Code"
+  phase "3/4  Claude Code"
   install_claude
 
-  phase "4/5  Shell Configuration"
+  phase "4/4  Shell Configuration"
   configure_shell
-
-  phase "5/5  Plugins"
-  configure_plugins
 
   phase "Verification"
   verify
