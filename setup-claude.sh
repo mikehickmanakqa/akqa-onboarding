@@ -33,6 +33,14 @@ trap 'die "Unexpected error (line $LINENO)"' ERR
 
 GCP_PROJECT="akqa-us-ai-playground"
 
+# Model pins — Vertex lags Anthropic's own defaults, so pin per tier.
+# Region must be global: regional endpoints 429 on the 5-series.
+# Keep in sync with the literal values in the SHELL_BLOCK heredoc.
+VERTEX_REGION="global"
+OPUS_MODEL="claude-opus-5"
+SONNET_MODEL="claude-sonnet-5"
+HAIKU_MODEL="claude-haiku-4-5@20251001"
+
 banner() {
   echo ""
   echo -e "${B}  ╔══════════════════════════════════════╗${N}"
@@ -355,8 +363,8 @@ configure_shell() {
   local marker="# AKQA Claude Code — managed by setup-claude.sh"
 
   if grep -q "$marker" "$shell_rc" 2>/dev/null; then
-    # Older versions may lack nvm/gcloud PATH lines or CLOUD_ML_REGION — update if so
-    if ! grep -q 'nvm.sh' "$shell_rc" 2>/dev/null || ! grep -q 'CLOUD_ML_REGION' "$shell_rc" 2>/dev/null || ! grep -q 'CLOUDSDK_PYTHON' "$shell_rc" 2>/dev/null; then
+    # Older versions may lack nvm/gcloud PATH lines, or carry a stale region/model pin — update if so
+    if ! grep -q 'nvm.sh' "$shell_rc" 2>/dev/null || ! grep -q "CLOUD_ML_REGION=$VERTEX_REGION" "$shell_rc" 2>/dev/null || ! grep -q 'CLOUDSDK_PYTHON' "$shell_rc" 2>/dev/null || ! grep -q "ANTHROPIC_DEFAULT_OPUS_MODEL=$OPUS_MODEL" "$shell_rc" 2>/dev/null; then
       info "Updating shell config (new settings available)..."
       cp "$shell_rc" "${shell_rc}.backup.$(date +%s)" 2>/dev/null || true
       # Remove old block and re-add below
@@ -366,7 +374,10 @@ configure_shell() {
       # Still export for this session
       export CLAUDE_CODE_USE_VERTEX=1
       export ANTHROPIC_VERTEX_PROJECT_ID="$GCP_PROJECT"
-      export CLOUD_ML_REGION="us-east5"
+      export CLOUD_ML_REGION="$VERTEX_REGION"
+      export ANTHROPIC_DEFAULT_OPUS_MODEL="$OPUS_MODEL"
+      export ANTHROPIC_DEFAULT_SONNET_MODEL="$SONNET_MODEL"
+      export ANTHROPIC_DEFAULT_HAIKU_MODEL="$HAIKU_MODEL"
       export GCLOUD_PROJECT="$GCP_PROJECT"
       export GOOGLE_CLOUD_PROJECT="$GCP_PROJECT"
       export GOOGLE_APPLICATION_CREDENTIALS="$HOME/.config/gcloud/application_default_credentials.json"
@@ -384,7 +395,10 @@ configure_shell() {
 # AKQA Claude Code — managed by setup-claude.sh
 export CLAUDE_CODE_USE_VERTEX=1
 export ANTHROPIC_VERTEX_PROJECT_ID=akqa-us-ai-playground
-export CLOUD_ML_REGION=us-east5
+export CLOUD_ML_REGION=global
+export ANTHROPIC_DEFAULT_OPUS_MODEL=claude-opus-5
+export ANTHROPIC_DEFAULT_SONNET_MODEL=claude-sonnet-5
+export ANTHROPIC_DEFAULT_HAIKU_MODEL=claude-haiku-4-5@20251001
 export GCLOUD_PROJECT="$ANTHROPIC_VERTEX_PROJECT_ID"
 export GOOGLE_CLOUD_PROJECT="$ANTHROPIC_VERTEX_PROJECT_ID"
 export GOOGLE_APPLICATION_CREDENTIALS="$HOME/.config/gcloud/application_default_credentials.json"
@@ -402,7 +416,10 @@ SHELL_BLOCK
   # Source for this session
   export CLAUDE_CODE_USE_VERTEX=1
   export ANTHROPIC_VERTEX_PROJECT_ID="$GCP_PROJECT"
-  export CLOUD_ML_REGION="us-east5"
+  export CLOUD_ML_REGION="$VERTEX_REGION"
+  export ANTHROPIC_DEFAULT_OPUS_MODEL="$OPUS_MODEL"
+  export ANTHROPIC_DEFAULT_SONNET_MODEL="$SONNET_MODEL"
+  export ANTHROPIC_DEFAULT_HAIKU_MODEL="$HAIKU_MODEL"
   export GCLOUD_PROJECT="$GCP_PROJECT"
   export GOOGLE_CLOUD_PROJECT="$GCP_PROJECT"
   export GOOGLE_APPLICATION_CREDENTIALS="$HOME/.config/gcloud/application_default_credentials.json"
