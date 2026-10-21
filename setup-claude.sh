@@ -361,14 +361,25 @@ install_claude() {
 configure_shell() {
   local shell_rc="$HOME/.zshrc"
   local marker="# AKQA Claude Code — managed by setup-claude.sh"
+  local end_marker="# end AKQA Claude Code"
 
   if grep -q "$marker" "$shell_rc" 2>/dev/null; then
     # Older versions may lack nvm/gcloud PATH lines, or carry a stale region/model pin — update if so
     if ! grep -q 'nvm.sh' "$shell_rc" 2>/dev/null || ! grep -q "CLOUD_ML_REGION=$VERTEX_REGION" "$shell_rc" 2>/dev/null || ! grep -q 'CLOUDSDK_PYTHON' "$shell_rc" 2>/dev/null || ! grep -q "ANTHROPIC_DEFAULT_OPUS_MODEL=$OPUS_MODEL" "$shell_rc" 2>/dev/null; then
       info "Updating shell config (new settings available)..."
       cp "$shell_rc" "${shell_rc}.backup.$(date +%s)" 2>/dev/null || true
-      # Remove old block and re-add below
-      sed -i '' "/$marker/,/^$/d" "$shell_rc"
+      # Remove old block and re-add below. Blocks written before the end
+      # marker existed are matched line by line against known contents,
+      # since they contain blank lines and can't be cut at the first one.
+      local tmp_rc
+      tmp_rc=$(mktemp)
+      awk -v start="$marker" -v end="$end_marker" '
+        $0 == start { skip = 1; next }
+        skip && $0 == end { skip = 0; next }
+        skip && ($0 ~ /^[[:space:]]*$/ || $0 ~ /CLAUDE_CODE_USE_VERTEX|ANTHROPIC_|CLOUD_ML_REGION|GCLOUD_PROJECT|GOOGLE_CLOUD_PROJECT|GOOGLE_APPLICATION_CREDENTIALS|CLOUDSDK_PYTHON|\.local\/python3|nvm\.sh|google-cloud-sdk\/bin|\.local\/bin|^# (Force gcloud|Tool paths|Ensure nvm|on PATH even)/) { next }
+        { skip = 0; print }
+      ' "$shell_rc" > "$tmp_rc" && cat "$tmp_rc" > "$shell_rc"
+      rm -f "$tmp_rc"
     else
       success "Shell already configured (skipping)"
       # Still export for this session
@@ -411,6 +422,7 @@ command -v python3 &>/dev/null && export CLOUDSDK_PYTHON="$(command -v python3)"
 [[ -s "$HOME/.nvm/nvm.sh" ]] && source "$HOME/.nvm/nvm.sh"
 [[ -d "$HOME/google-cloud-sdk/bin" ]] && export PATH="$HOME/google-cloud-sdk/bin:$PATH"
 [[ -d "$HOME/.local/bin" ]] && export PATH="$HOME/.local/bin:$PATH"
+# end AKQA Claude Code
 SHELL_BLOCK
 
   # Source for this session
